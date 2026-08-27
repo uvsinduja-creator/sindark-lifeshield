@@ -1,0 +1,22 @@
+# LifeShield base configuration
+# This file exists because hardcoded ports/paths/thresholds are banned
+# by our own dev rules. Every module reads from here, not from
+# constants buried in code.
+
+agent:
+  host: "127.0.0.1"
+  port: 8787
+
+storage:
+  db_path: "./lifeshield.db"
+
+decision_thresholds:
+  allow_max: 0.30
+  monitor_max: 0.60
+  warn_max: 0.80
+  strong_warning_max: 0.95
+  # anything above strong_warning_max => BLOCK
+
+logging:
+  level: "INFO"
+  file: "./logs/lifeshield.log"
