@@ -21,8 +21,17 @@ env/
 .DS_Store
 Thumbs.db
 
+# Database files
+*.db
+*.sqlite3
+
 # Logs
 *.log
+logs/
+
+# Testing & Cache
+.pytest_cache/
+.coverage
 
 # Build/cache
 build/
