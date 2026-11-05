@@ -55,7 +55,6 @@ async def test_post_event_and_retrieve(client: AsyncClient):
     assert post_data["status"] == "queued"
     event_id = post_data["event_id"]
 
-    # Yield to let background queue worker process the enqueued event
     await asyncio.sleep(0.3)
 
     get_resp = await client.get(f"/events/{event_id}")
@@ -64,6 +63,37 @@ async def test_post_event_and_retrieve(client: AsyncClient):
     assert event_data["event_id"] == event_id
     assert event_data["event_type"] == "LOGIN_FAILURE"
     assert event_data["user"] == "pytest_user"
+
+
+@pytest.mark.anyio
+async def test_browser_extension_url_visit_event(client: AsyncClient):
+    """Tests posting a URL_VISIT event structured as produced by the browser extension."""
+    payload = {
+        "event_type": "URL_VISIT",
+        "source": "browser_extension",
+        "device": "browser_extension_device",
+        "data": {
+            "url": "https://example.com/login",
+            "tab_id": 42,
+        },
+        "metadata": {
+            "user_agent": "Mozilla/5.0 TestBrowser/1.0",
+        },
+    }
+
+    post_resp = await client.post("/events", json=payload)
+    assert post_resp.status_code == 202
+    event_id = post_resp.json()["event_id"]
+
+    await asyncio.sleep(0.3)
+
+    get_resp = await client.get(f"/events/{event_id}")
+    assert get_resp.status_code == 200
+    event_data = get_resp.json()
+    assert event_data["event_type"] == "URL_VISIT"
+    assert event_data["source"] == "browser_extension"
+    assert event_data["data"]["url"] == "https://example.com/login"
+    assert event_data["metadata"]["user_agent"] == "Mozilla/5.0 TestBrowser/1.0"
 
 
 @pytest.mark.anyio

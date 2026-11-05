@@ -5,25 +5,46 @@
  * running on http://127.0.0.1:8787.
  *
  * Events captured:
- *   - URL_VISIT          (every committed top-level navigation)
+ *   - URL_VISIT          (navigation completed on main frame)
  *   - URL_REDIRECT       (server-side redirects during navigation)
- *   - BROWSER_DOWNLOAD   (every file download that starts)
+ *   - BROWSER_DOWNLOAD   (file downloads initiated)
+ *
+ * Respects user opt-out toggle (collectionEnabled in chrome.storage.local).
  */
 
 const AGENT_URL = "http://127.0.0.1:8787/events";
 
-// --- Helpers -----------------------------------------------------------
+// Simple in-memory + storage-backed toggle so the user can pause
+// collection without uninstalling the extension (privacy requirement).
+let collectionEnabled = true;
+
+chrome.storage.local.get(["collectionEnabled"], (result) => {
+  // Default to enabled on first install if no preference saved yet
+  collectionEnabled = result.collectionEnabled !== false;
+});
+
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.collectionEnabled) {
+    collectionEnabled = changes.collectionEnabled.newValue;
+  }
+});
 
 /**
- * Sends a LifeShieldEvent-shaped payload to the local agent.
- * Silently drops the event if the agent is unreachable (extension
- * must never crash the browser).
+ * Builds a LifeShieldEvent-shaped payload and POSTs it to the agent.
  */
 async function sendEvent(eventType, data) {
+  if (!collectionEnabled) {
+    return;
+  }
+
   const payload = {
     event_type: eventType,
     source: "browser_extension",
+    device: "browser_extension_device",
     data: data,
+    metadata: {
+      user_agent: navigator.userAgent,
+    },
   };
 
   try {
@@ -37,19 +58,18 @@ async function sendEvent(eventType, data) {
       console.warn(`[LifeShield] Agent returned ${resp.status} for ${eventType}`);
     } else {
       console.debug(`[LifeShield] Sent ${eventType}`, data);
-      // Increment sent-event counter stored in extension local storage
       const { sentCount = 0 } = await chrome.storage.local.get("sentCount");
       await chrome.storage.local.set({ sentCount: sentCount + 1, lastEventAt: Date.now() });
     }
   } catch (err) {
-    // Agent not running — record miss so popup can show "Agent offline"
-    console.warn("[LifeShield] Agent unreachable:", err.message);
+    // Agent is probably not running — fail silently, log only
+    console.warn("[LifeShield] Could not reach agent:", err.message);
     const { missCount = 0 } = await chrome.storage.local.get("missCount");
     await chrome.storage.local.set({ missCount: missCount + 1 });
   }
 }
 
-/** Returns true for chrome-internal and extension pages we should ignore. */
+/** Returns true for internal and extension pages we should ignore. */
 function isIgnoredUrl(url) {
   if (!url) return true;
   return (
@@ -62,55 +82,44 @@ function isIgnoredUrl(url) {
 }
 
 // --- URL_VISIT ---------------------------------------------------------
-// Fires after the user's browser has committed to a new page (after all
-// server redirects have resolved), so the final URL is what we capture.
+chrome.webNavigation.onCompleted.addListener(async (details) => {
+  if (details.frameId !== 0) return; // ignore iframes
+  if (!collectionEnabled) return;    // respect user's opt-out
+  if (isIgnoredUrl(details.url)) return;
+  if (!details.url.startsWith("http")) return;
 
-chrome.webNavigation.onCommitted.addListener(
-  async (details) => {
-    // Only track top-level page loads (frameId 0), not iframes
-    if (details.frameId !== 0) return;
-    if (isIgnoredUrl(details.url)) return;
-
-    await sendEvent("URL_VISIT", {
-      url: details.url,
-      tab_id: details.tabId,
-      transition_type: details.transitionType,
-      transition_qualifiers: details.transitionQualifiers,
-    });
-  }
-);
+  await sendEvent("URL_VISIT", {
+    url: details.url,
+    tab_id: details.tabId,
+  });
+});
 
 // --- URL_REDIRECT -------------------------------------------------------
-// Fires for every server-side redirect step (301/302/307/308).
-// Gives us the FULL redirect chain, not just the final URL.
+chrome.webNavigation.onBeforeRedirect.addListener(async (details) => {
+  if (details.frameId !== 0) return;
+  if (!collectionEnabled) return;
+  if (isIgnoredUrl(details.url) && isIgnoredUrl(details.redirectUrl)) return;
 
-chrome.webNavigation.onBeforeRedirect.addListener(
-  async (details) => {
-    if (details.frameId !== 0) return;
-    if (isIgnoredUrl(details.url) && isIgnoredUrl(details.redirectUrl)) return;
-
-    await sendEvent("URL_REDIRECT", {
-      from_url: details.url,
-      to_url: details.redirectUrl,
-      tab_id: details.tabId,
-    });
-  }
-);
+  await sendEvent("URL_REDIRECT", {
+    from_url: details.url,
+    to_url: details.redirectUrl,
+    tab_id: details.tabId,
+  });
+});
 
 // --- BROWSER_DOWNLOAD ---------------------------------------------------
-// Fires when Chrome/Edge starts a file download.
-
 chrome.downloads.onCreated.addListener(async (downloadItem) => {
+  if (!collectionEnabled) return;
+
   await sendEvent("BROWSER_DOWNLOAD", {
     url: downloadItem.url,
     final_url: downloadItem.finalUrl,
-    filename: downloadItem.filename,         // full local path once known
+    filename: downloadItem.filename,
     mime: downloadItem.mime,
     file_size: downloadItem.fileSize,
-    danger: downloadItem.danger,             // "safe" | "file" | "url" | "content" | "host" | ...
+    danger: downloadItem.danger,
     download_id: downloadItem.id,
   });
 });
 
-// --- Startup log -------------------------------------------------------
 console.log("[LifeShield] Background service worker started.");
