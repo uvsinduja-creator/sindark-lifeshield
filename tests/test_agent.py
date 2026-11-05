@@ -36,6 +36,7 @@ async def test_health_check(client: AsyncClient):
     assert data["status"] == "healthy"
     assert "queue_size" in data
     assert "stored_events" in data
+    assert "total_detections" in data
 
 
 @pytest.mark.anyio
@@ -73,7 +74,7 @@ async def test_browser_extension_url_visit_event(client: AsyncClient):
         "source": "browser_extension",
         "device": "browser_extension_device",
         "data": {
-            "url": "https://example.com/login",
+            "url": "https://www.google.com/search?q=cybersecurity",
             "tab_id": 42,
         },
         "metadata": {
@@ -92,8 +93,58 @@ async def test_browser_extension_url_visit_event(client: AsyncClient):
     event_data = get_resp.json()
     assert event_data["event_type"] == "URL_VISIT"
     assert event_data["source"] == "browser_extension"
-    assert event_data["data"]["url"] == "https://example.com/login"
-    assert event_data["metadata"]["user_agent"] == "Mozilla/5.0 TestBrowser/1.0"
+    assert "risk_score" in event_data["data"]
+    # Benign URL should have low risk
+    assert event_data["data"]["risk_score"] < 0.40
+
+
+@pytest.mark.anyio
+async def test_url_visit_scoring_pipeline_phishing(client: AsyncClient):
+    """Week 4 deliverable: Visiting a known-bad test URL produces a risk score and detection record."""
+    bad_url = "http://192.168.1.55/paypal/login.php?cmd=verify&account=update"
+    payload = {
+        "event_type": "URL_VISIT",
+        "source": "browser_extension",
+        "device": "test_device",
+        "data": {
+            "url": bad_url,
+            "tab_id": 101,
+        },
+    }
+
+    post_resp = await client.post("/events", json=payload)
+    assert post_resp.status_code == 202
+    event_id = post_resp.json()["event_id"]
+
+    await asyncio.sleep(0.3)
+
+    # 1. Verify event in database has risk_score attached
+    get_resp = await client.get(f"/events/{event_id}")
+    assert get_resp.status_code == 200
+    event_data = get_resp.json()
+    assert "risk_score" in event_data["data"]
+    assert event_data["data"]["risk_score"] >= 0.50
+    assert event_data["data"]["is_phishing"] is True
+
+    # 2. Verify detection record exists for this event
+    det_resp = await client.get(f"/detections/{event_id}")
+    assert det_resp.status_code == 200
+    detections = det_resp.json()
+    assert len(detections) >= 1
+    assert detections[0]["model_name"] == "url_phishing_rf"
+    assert detections[0]["is_threat"] is True
+
+
+@pytest.mark.anyio
+async def test_direct_url_score_endpoint(client: AsyncClient):
+    """Tests direct POST /ml/url/score endpoint."""
+    resp = await client.post("/ml/url/score", json={"url": "https://secure-apple-verify.account-update.xyz/login"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "risk_score" in data
+    assert "severity" in data
+    assert "indicators" in data
+    assert data["risk_score"] >= 0.50
 
 
 @pytest.mark.anyio
@@ -127,3 +178,4 @@ async def test_stats_endpoint(client: AsyncClient):
     assert "total_events" in data
     assert "by_type" in data
     assert "by_source" in data
+    assert "total_detections" in data

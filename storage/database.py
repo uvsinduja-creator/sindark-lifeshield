@@ -26,9 +26,11 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Creates the events table if it does not exist."""
+    """Creates the events and detections tables if they do not exist."""
     with get_connection() as conn:
         cursor = conn.cursor()
+        
+        # Events table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS events (
                 event_id TEXT PRIMARY KEY,
@@ -46,6 +48,24 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_correlation_id ON events(correlation_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)")
+
+        # Detections table (Module 7 / Week 4)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS detections (
+                detection_id TEXT PRIMARY KEY,
+                event_id TEXT NOT NULL,
+                model_name TEXT NOT NULL,
+                risk_score REAL NOT NULL,
+                severity TEXT NOT NULL,
+                is_threat INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                details TEXT NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_detections_event_id ON detections(event_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_detections_severity ON detections(severity)")
+
         conn.commit()
 
 

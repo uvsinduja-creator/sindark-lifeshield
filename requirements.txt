@@ -4,3 +4,6 @@ fastapi
 uvicorn
 httpx
 pytest
+scikit-learn
+joblib
+numpy

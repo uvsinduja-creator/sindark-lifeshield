@@ -2,6 +2,7 @@
 LifeShield Agent Main Application.
 Starts the FastAPI application, initializes database, configures CORS middleware,
 and runs the background consumer task to drain the EventBus into SQLite storage.
+In Week 4: Integrates ML Phishing URL scoring for URL_VISIT and URL_REDIRECT events.
 """
 import sys
 import traceback
@@ -15,18 +16,43 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from storage.database import init_db
 from storage import repository
+from storage.schema import EventType
 from agent.event_bus import event_bus
 from api.routes import router
+from ml.url_model.classifier import url_classifier
 
 
 async def background_queue_worker():
     """
-    Background worker that continuously consumes events from the EventBus
-    and persists them to SQLite storage.
+    Background worker that continuously consumes events from the EventBus,
+    runs lightweight ML model inference on applicable events,
+    and persists them to SQLite storage and detections table.
     """
     while True:
         try:
             event = await event_bus.get()
+
+            # Week 4: Real-time ML URL Scoring for navigation events
+            if event.event_type in (EventType.URL_VISIT, EventType.URL_REDIRECT):
+                url = event.data.get("url") or event.data.get("to_url")
+                if url and isinstance(url, str):
+                    classification = url_classifier.classify(url)
+                    event.data["risk_score"] = classification["risk_score"]
+                    event.data["severity"] = classification["severity"]
+                    event.data["is_phishing"] = classification["is_phishing"]
+                    event.data["indicators"] = classification["indicators"]
+
+                    # Persist detection outcome linked to event
+                    repository.save_detection(
+                        event_id=event.event_id,
+                        model_name="url_phishing_rf",
+                        risk_score=classification["risk_score"],
+                        severity=classification["severity"],
+                        is_threat=classification["is_phishing"],
+                        details=classification,
+                    )
+
+            # Persist event into SQLite
             repository.save_event(event)
             event_bus.task_done()
         except asyncio.CancelledError:
@@ -55,15 +81,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="LifeShield Agent",
-    description="Privacy-preserving local endpoint security agent API",
+    description="Privacy-preserving local endpoint security agent API with AI telemetry",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# CORS Middleware: allow localhost dashboard AND chrome-extension:// origins.
-# Using allow_origins=["*"] is required for Manifest V3 service workers since
-# the chrome-extension:// scheme cannot be listed explicitly in Starlette CORS.
-# This is safe because the agent only binds to 127.0.0.1 (not 0.0.0.0).
+# CORS Middleware: allow localhost dashboard AND chrome-extension:// origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

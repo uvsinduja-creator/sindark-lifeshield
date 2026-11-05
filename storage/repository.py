@@ -1,12 +1,13 @@
 """
 Repository module for LifeShield storage layer.
-Provides functions to save and retrieve events from SQLite database.
+Provides functions to save and retrieve events and threat detections from SQLite database.
 """
 import sys
 import json
 from pathlib import Path
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
+from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -100,8 +101,102 @@ def get_event_by_id(event_id: str) -> Optional[LifeShieldEvent]:
     )
 
 
+# --- Detections Layer (Module 7 & 10) -----------------------------------
+
+def save_detection(
+    event_id: str,
+    model_name: str,
+    risk_score: float,
+    severity: str,
+    is_threat: bool,
+    details: Dict[str, Any],
+    detection_id: Optional[str] = None,
+    timestamp: Optional[str] = None,
+) -> str:
+    """Saves an ML model detection record linked to an event."""
+    init_db()
+    det_id = detection_id or str(uuid4())
+    ts = timestamp or datetime.now(timezone.utc).isoformat()
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO detections (
+                detection_id, event_id, model_name, risk_score,
+                severity, is_threat, timestamp, details
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                det_id,
+                event_id,
+                model_name,
+                float(risk_score),
+                severity,
+                1 if is_threat else 0,
+                ts,
+                json.dumps(details),
+            ),
+        )
+        conn.commit()
+    return det_id
+
+
+def get_detections(limit: int = 100, threats_only: bool = False) -> List[Dict[str, Any]]:
+    """Retrieves recent detections sorted by timestamp descending."""
+    init_db()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if threats_only:
+            cursor.execute(
+                "SELECT * FROM detections WHERE is_threat = 1 ORDER BY timestamp DESC LIMIT ?", (limit,)
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM detections ORDER BY timestamp DESC LIMIT ?", (limit,)
+            )
+        rows = cursor.fetchall()
+
+    detections = []
+    for r in rows:
+        detections.append({
+            "detection_id": r["detection_id"],
+            "event_id": r["event_id"],
+            "model_name": r["model_name"],
+            "risk_score": r["risk_score"],
+            "severity": r["severity"],
+            "is_threat": bool(r["is_threat"]),
+            "timestamp": r["timestamp"],
+            "details": json.loads(r["details"]) if r["details"] else {},
+        })
+    return detections
+
+
+def get_detections_by_event_id(event_id: str) -> List[Dict[str, Any]]:
+    """Retrieves all detections associated with an event."""
+    init_db()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM detections WHERE event_id = ? ORDER BY timestamp DESC",
+            (event_id,),
+        )
+        rows = cursor.fetchall()
+
+    return [{
+        "detection_id": r["detection_id"],
+        "event_id": r["event_id"],
+        "model_name": r["model_name"],
+        "risk_score": r["risk_score"],
+        "severity": r["severity"],
+        "is_threat": bool(r["is_threat"]),
+        "timestamp": r["timestamp"],
+        "details": json.loads(r["details"]) if r["details"] else {},
+    } for r in rows]
+
+
 def get_stats() -> Dict[str, Any]:
-    """Returns basic event statistics."""
+    """Returns database statistics including events and detections."""
     init_db()
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -114,21 +209,16 @@ def get_stats() -> Dict[str, Any]:
         cursor.execute("SELECT source, COUNT(*) as count FROM events GROUP BY source")
         by_source = {row["source"]: row["count"] for row in cursor.fetchall()}
 
+        cursor.execute("SELECT COUNT(*) as total FROM detections")
+        total_detections = cursor.fetchone()["total"]
+
+        cursor.execute("SELECT COUNT(*) as count FROM detections WHERE is_threat = 1")
+        total_threats = cursor.fetchone()["count"]
+
     return {
         "total_events": total,
         "by_type": by_type,
         "by_source": by_source,
+        "total_detections": total_detections,
+        "total_threats": total_threats,
     }
-
-
-if __name__ == "__main__":
-    test_evt = LifeShieldEvent(
-        event_type=EventType.URL_VISIT,
-        source=EventSource.MANUAL,
-        user="test_repo_user",
-        data={"url": "http://test-repo.com"},
-    )
-    save_event(test_evt)
-    retrieved = get_event_by_id(test_evt.event_id)
-    print(f"Saved & Retrieved Event: {retrieved.event_id} ({retrieved.event_type})")
-    print(f"Stats: {get_stats()}")
