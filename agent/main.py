@@ -43,9 +43,9 @@ async def lifespan(app: FastAPI):
     """
     init_db()
     worker_task = asyncio.create_task(background_queue_worker())
-    
+
     yield
-    
+
     worker_task.cancel()
     try:
         await worker_task
@@ -60,13 +60,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Middleware setup to allow browser extensions and localhost clients
+# CORS Middleware: allow localhost dashboard AND chrome-extension:// origins.
+# Using allow_origins=["*"] is required for Manifest V3 service workers since
+# the chrome-extension:// scheme cannot be listed explicitly in Starlette CORS.
+# This is safe because the agent only binds to 127.0.0.1 (not 0.0.0.0).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # credentials=False is required with allow_origins=*
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type"],
 )
 
 app.include_router(router)
