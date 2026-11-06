@@ -1,6 +1,7 @@
 """
 FastAPI Routes module for LifeShield API.
-Defines endpoints for posting events, fetching events, health check, stats, detections, and ML scoring.
+Defines endpoints for posting events, fetching events, health check, stats, detections,
+and direct inference for URL Phishing (Week 4) and Scam Message NLP (Week 5).
 """
 import sys
 from pathlib import Path
@@ -15,12 +16,17 @@ from agent.event_bus import event_bus
 from storage import repository
 from storage.schema import LifeShieldEvent
 from ml.url_model.classifier import url_classifier
+from ml.nlp_model.classifier import scam_classifier
 
 router = APIRouter()
 
 
 class URLScoreRequest(BaseModel):
     url: str
+
+
+class MessageScoreRequest(BaseModel):
+    text: str
 
 
 @router.post("/events", status_code=status.HTTP_202_ACCEPTED)
@@ -84,6 +90,14 @@ async def score_url_endpoint(req: URLScoreRequest):
     if not req.url:
         raise HTTPException(status_code=400, detail="URL cannot be empty")
     return url_classifier.classify(req.url)
+
+
+@router.post("/ml/nlp/score")
+async def score_message_endpoint(req: MessageScoreRequest):
+    """Direct inference endpoint to evaluate and score any message text for scam/phishing risk."""
+    if not req.text:
+        raise HTTPException(status_code=400, detail="Message text cannot be empty")
+    return scam_classifier.classify(req.text)
 
 
 @router.get("/health")

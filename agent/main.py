@@ -2,7 +2,8 @@
 LifeShield Agent Main Application.
 Starts the FastAPI application, initializes database, configures CORS middleware,
 and runs the background consumer task to drain the EventBus into SQLite storage.
-In Week 4: Integrates ML Phishing URL scoring for URL_VISIT and URL_REDIRECT events.
+In Week 4: Real-time ML Phishing URL scoring for URL_VISIT and URL_REDIRECT events.
+In Week 5: Real-time ML Scam/Phishing NLP text classification for MESSAGE_ANALYSIS events.
 """
 import sys
 import traceback
@@ -20,6 +21,7 @@ from storage.schema import EventType
 from agent.event_bus import event_bus
 from api.routes import router
 from ml.url_model.classifier import url_classifier
+from ml.nlp_model.classifier import scam_classifier
 
 
 async def background_queue_worker():
@@ -42,13 +44,31 @@ async def background_queue_worker():
                     event.data["is_phishing"] = classification["is_phishing"]
                     event.data["indicators"] = classification["indicators"]
 
-                    # Persist detection outcome linked to event
                     repository.save_detection(
                         event_id=event.event_id,
                         model_name="url_phishing_rf",
                         risk_score=classification["risk_score"],
                         severity=classification["severity"],
                         is_threat=classification["is_phishing"],
+                        details=classification,
+                    )
+
+            # Week 5: Real-time ML Scam Message NLP Classification
+            elif event.event_type == EventType.MESSAGE_ANALYSIS:
+                msg_text = event.data.get("text") or event.data.get("message")
+                if msg_text and isinstance(msg_text, str):
+                    classification = scam_classifier.classify(msg_text)
+                    event.data["risk_score"] = classification["risk_score"]
+                    event.data["severity"] = classification["severity"]
+                    event.data["is_scam"] = classification["is_scam"]
+                    event.data["indicators"] = classification["indicators"]
+
+                    repository.save_detection(
+                        event_id=event.event_id,
+                        model_name="scam_nlp_tfidf",
+                        risk_score=classification["risk_score"],
+                        severity=classification["severity"],
+                        is_threat=classification["is_scam"],
                         details=classification,
                     )
 

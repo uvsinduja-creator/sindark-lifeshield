@@ -94,7 +94,6 @@ async def test_browser_extension_url_visit_event(client: AsyncClient):
     assert event_data["event_type"] == "URL_VISIT"
     assert event_data["source"] == "browser_extension"
     assert "risk_score" in event_data["data"]
-    # Benign URL should have low risk
     assert event_data["data"]["risk_score"] < 0.40
 
 
@@ -118,7 +117,6 @@ async def test_url_visit_scoring_pipeline_phishing(client: AsyncClient):
 
     await asyncio.sleep(0.3)
 
-    # 1. Verify event in database has risk_score attached
     get_resp = await client.get(f"/events/{event_id}")
     assert get_resp.status_code == 200
     event_data = get_resp.json()
@@ -126,7 +124,6 @@ async def test_url_visit_scoring_pipeline_phishing(client: AsyncClient):
     assert event_data["data"]["risk_score"] >= 0.50
     assert event_data["data"]["is_phishing"] is True
 
-    # 2. Verify detection record exists for this event
     det_resp = await client.get(f"/detections/{event_id}")
     assert det_resp.status_code == 200
     detections = det_resp.json()
@@ -145,6 +142,59 @@ async def test_direct_url_score_endpoint(client: AsyncClient):
     assert "severity" in data
     assert "indicators" in data
     assert data["risk_score"] >= 0.50
+
+
+@pytest.mark.anyio
+async def test_message_analysis_scoring_pipeline_scam(client: AsyncClient):
+    """Week 5 deliverable: Submitting a scam message produces risk score and detection record."""
+    scam_msg = "URGENT: Your Chase checking account has been locked. Verify immediately at http://chase-security-auth.top/verify"
+    payload = {
+        "event_type": "MESSAGE_ANALYSIS",
+        "source": "manual",
+        "user": "test_user",
+        "data": {
+            "text": scam_msg,
+            "channel": "sms",
+        },
+    }
+
+    post_resp = await client.post("/events", json=payload)
+    assert post_resp.status_code == 202
+    event_id = post_resp.json()["event_id"]
+
+    await asyncio.sleep(0.3)
+
+    # 1. Verify event in DB has risk_score attached
+    get_resp = await client.get(f"/events/{event_id}")
+    assert get_resp.status_code == 200
+    event_data = get_resp.json()
+    assert "risk_score" in event_data["data"]
+    assert event_data["data"]["risk_score"] >= 0.60
+    assert event_data["data"]["is_scam"] is True
+
+    # 2. Verify detection record exists for this event
+    det_resp = await client.get(f"/detections/{event_id}")
+    assert det_resp.status_code == 200
+    detections = det_resp.json()
+    assert len(detections) >= 1
+    assert detections[0]["model_name"] == "scam_nlp_tfidf"
+    assert detections[0]["is_threat"] is True
+
+
+@pytest.mark.anyio
+async def test_direct_nlp_score_endpoint(client: AsyncClient):
+    """Tests direct POST /ml/nlp/score endpoint."""
+    resp = await client.post(
+        "/ml/nlp/score",
+        json={"text": "URGENT: Your debit card is suspended. Contact fraud prevention now."},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "risk_score" in data
+    assert "severity" in data
+    assert "indicators" in data
+    assert data["risk_score"] >= 0.60
+    assert data["is_scam"] is True
 
 
 @pytest.mark.anyio
