@@ -1,9 +1,9 @@
 """
 Dataset collection script for LifeShield URL Phishing Model.
 Downloads real-world threat feeds and legitimate domain rankings:
-  1. Phishing: JPCERT/CC verified phishing archive + OpenPhish community feed
+  1. Phishing: JPCERT/CC verified phishing archive (Jan-Jun 2024) + OpenPhish community feed
   2. Benign: Tranco Top 1M list (standard scientific research benchmark) + diverse real-world paths
-Saves curated, deduplicated dataset to ml/url_model/data/dataset.csv.
+Saves large curated, deduplicated dataset to ml/url_model/data/dataset.csv.
 """
 import csv
 import io
@@ -108,9 +108,9 @@ def fetch_openphish_urls(limit: int = 500) -> list[str]:
     return urls[:limit]
 
 
-def fetch_jpcert_phishing_urls(months: list[str] = ["202401", "202402"]) -> list[str]:
+def fetch_jpcert_phishing_urls(months: list[str] = ["202401", "202402", "202403", "202404", "202405", "202406"]) -> list[str]:
     """Fetches verified phishing URLs from JPCERT/CC archive."""
-    print("[+] Fetching verified phishing archives from JPCERT/CC...")
+    print(f"[+] Fetching verified phishing archives from JPCERT/CC ({len(months)} months)...")
     all_urls = []
     for month in months:
         url = f"https://raw.githubusercontent.com/JPCERTCC/phishurl-list/main/2024/{month}.csv"
@@ -125,20 +125,20 @@ def fetch_jpcert_phishing_urls(months: list[str] = ["202401", "202402"]) -> list
                         target_url = row[1].strip()
                         if target_url.startswith("http://") or target_url.startswith("https://"):
                             all_urls.append(target_url)
-            print(f"    Downloaded {len(all_urls)} URLs so far from JPCERT {month} archive.")
+            print(f"    Downloaded {len(all_urls)} URLs so far after {month} archive.")
         except Exception as e:
             print(f"    [!] Warning: Failed to fetch JPCERT {month} ({e})")
     return all_urls
 
 
-def fetch_tranco_benign_urls(sample_size: int = 5000) -> list[str]:
+def fetch_tranco_benign_urls(sample_size: int = 25000) -> list[str]:
     """Downloads top domains from Tranco list and synthesizes realistic paths."""
-    print(f"[+] Fetching top legitimate domains from Tranco list...")
+    print(f"[+] Fetching {sample_size} top legitimate domains from Tranco list...")
     url = "https://tranco-list.eu/top-1m.csv.zip"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
     benign_urls = list(SEED_BENIGN_URLS)
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=25) as resp:
             data = resp.read()
             with zipfile.ZipFile(io.BytesIO(data)) as z:
                 first_file = z.namelist()[0]
@@ -158,26 +158,26 @@ def fetch_tranco_benign_urls(sample_size: int = 5000) -> list[str]:
     return benign_urls
 
 
-def build_and_save_dataset(target_samples_per_class: int = 3500) -> None:
-    """Builds balanced dataset of benign and phishing URLs and writes to CSV."""
+def build_and_save_dataset(target_samples_per_class: int = 20000) -> None:
+    """Builds large balanced dataset of benign and phishing URLs and writes to CSV."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     # 1. Phishing URLs
     phish_openphish = fetch_openphish_urls()
-    phish_jpcert = fetch_jpcert_phishing_urls(["202401", "202402"])
+    phish_jpcert = fetch_jpcert_phishing_urls()
     all_phishing = list(dict.fromkeys(phish_openphish + phish_jpcert))
     random.seed(42)
     random.shuffle(all_phishing)
     selected_phishing = all_phishing[:target_samples_per_class]
 
     # 2. Benign URLs
-    benign_urls = fetch_tranco_benign_urls(sample_size=target_samples_per_class + 500)
+    benign_urls = fetch_tranco_benign_urls(sample_size=len(selected_phishing) + 1000)
     selected_benign = benign_urls[:len(selected_phishing)]
 
-    print(f"\n[+] Dataset summary:")
+    print(f"\n[+] Scaled dataset summary:")
     print(f"    Phishing URLs: {len(selected_phishing)}")
     print(f"    Benign URLs:   {len(selected_benign)}")
-    print(f"    Total:         {len(selected_phishing) + len(selected_benign)}")
+    print(f"    Total samples: {len(selected_phishing) + len(selected_benign)}")
 
     # 3. Write to CSV
     with open(DATASET_CSV, "w", newline="", encoding="utf-8") as f:
@@ -188,7 +188,7 @@ def build_and_save_dataset(target_samples_per_class: int = 3500) -> None:
         for u in selected_phishing:
             writer.writerow([u, 1])
 
-    print(f"[+] Successfully wrote dataset to {DATASET_CSV}")
+    print(f"[+] Successfully wrote {len(selected_phishing) + len(selected_benign)} samples to {DATASET_CSV}")
 
 
 if __name__ == "__main__":
