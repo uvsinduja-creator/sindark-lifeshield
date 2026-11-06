@@ -7,3 +7,6 @@ pytest
 scikit-learn
 joblib
 numpy
+requests
+psutil
+pywin32; sys_platform == 'win32'

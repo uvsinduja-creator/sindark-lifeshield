@@ -20,3 +20,10 @@ decision_thresholds:
 logging:
   level: "INFO"
   file: "./logs/lifeshield.log"
+
+collectors:
+  windows:
+    # Seconds between each poll of the Security Event Log and psutil snapshot
+    poll_interval_seconds: 5
+    # How far back (seconds) to look on the very first login collector poll
+    login_lookback_seconds: 30

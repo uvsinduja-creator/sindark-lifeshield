@@ -43,7 +43,7 @@ Every module belongs to one of these 8 pipeline stations:
 
 ---
 
-## 📊 3. Current Implementation Status (Weeks 1 – 5 Completed)
+## 📊 3. Current Implementation Status (Weeks 1 – 6 Completed)
 
 | Week | Component | Status | Key Deliverables & Benchmark Metrics |
 |---|---|---|---|
@@ -52,8 +52,8 @@ Every module belongs to one of these 8 pipeline stations:
 | **Week 3** | Browser Extension | ✅ Done | Chrome/Edge Manifest V3 extension in `browser-extension/` (`manifest.json`, `background.js`, `popup.html`, `popup.js`, icons, Section 6 privacy toggle). Captures `URL_VISIT`, `URL_REDIRECT`, and `BROWSER_DOWNLOAD`. |
 | **Week 4** | URL Phishing ML Model | ✅ Done | `ml/url_model/` (`features.py`, `train.py`, `classifier.py`, `collect_dataset.py`, `data/dataset.csv`). **Trained on 40,000 real-world samples** (JPCERT/CC + OpenPhish + Tranco Top 1M). **98.29% Train Accuracy, 97.71% Test Accuracy, 0.9979 ROC-AUC**. Real-time scoring wired into agent. |
 | **Week 5** | Scam Message NLP Model | ✅ Done | `ml/nlp_model/` (`features.py`, `train.py`, `classifier.py`, `collect_dataset.py`, `data/dataset.csv`). **Trained on 6,370 real-world samples** (UCI SMS Spam Collection + Fraud Email Phishing dataset + mobile scam patterns) using TF-IDF + Logistic Regression. **98.80% Train Accuracy, 97.33% Test Accuracy, 0.9948 ROC-AUC**. Real-time scoring wired into `MESSAGE_ANALYSIS` events. |
-| **Week 6** | Windows Telemetry Collector | ⏳ Next | Windows Event Log collector (login events, process start/stop). |
-| **Week 7** | Network & File Collectors | ⏳ Pending | DNS query metadata + file creation/download watcher. |
+| **Week 6** | Windows Telemetry Collector | ✅ Done | `collectors/windows/` (`login_collector.py`, `process_collector.py`, `watcher.py`). Windows Security Event Log (Event ID 4624 -> `LOGIN_SUCCESS`, Event ID 4625 -> `LOGIN_FAILURE`) via `pywin32` + process creation/termination tracking (`PROCESS_START`, `PROCESS_END`) via `psutil`. Configuration from `configs/base.yaml`. |
+| **Week 7** | Network & File Collectors | ⏳ Next | DNS query metadata + file creation/download watcher. |
 | **Week 8** | Behavior & File Models | ⏳ Pending | Isolation Forest behavioral anomaly detector + file risk model. |
 | **Weeks 9–10** | Correlation Engine | ⏳ Pending | Cross-source attack chain reconstruction (`URL -> download -> process -> network`). |
 | **Week 11** | Risk Scoring Engine | ⏳ Pending | Weighted evidence scoring combining ML, severity, recency, and chain length. |
@@ -61,19 +61,11 @@ Every module belongs to one of these 8 pipeline stations:
 | **Week 13** | Local LLM & Dashboard | ⏳ Pending | Ollama local explanation generator + React monitoring dashboard. |
 | **Week 14** | Packaging & Evaluation | ⏳ Pending | Windows background service + end-to-end benchmark reporting. |
 
-**Current Test Suite**: 19 automated tests passing in ~5 seconds (`python -m pytest tests/ -v`).
+**Current Test Suite**: 28 automated tests passing in ~6 seconds (`python -m pytest tests/ -v`).
 
 ---
 
-## 🗺️ 4. Detailed Blueprints for Upcoming Weeks (Weeks 6 – 14)
-
-### Week 6: Station 1 — Watch (Windows Telemetry Collector)
-* **Goal**: Capture Windows login events and process creation events without heavy ETW drivers.
-* **Target Files**:
-  * `collectors/windows/login_collector.py`: Polls/subscribes to Windows Security Event Log (Event ID 4624 for `LOGIN_SUCCESS`, Event ID 4625 for `LOGIN_FAILURE`).
-  * `collectors/windows/process_collector.py`: Monitors process creations (e.g. via `psutil` or WMI / Win32 process events) and normalizes into `PROCESS_START` / `PROCESS_END`.
-  * `collectors/windows/watcher.py`: Background runner service that pushes events to `http://127.0.0.1:8787/events`.
-* **Deliverable**: Failed Windows login or new process creation automatically lands as a normalized event in `lifeshield.db`.
+## 🗺️ 4. Detailed Blueprints for Upcoming Weeks (Weeks 7 – 14)
 
 ### Week 7: Station 1 — Watch (Network & Filesystem Collectors)
 * **Goal**: Observe DNS lookups and downloaded/created file filesystem changes.
@@ -98,57 +90,29 @@ Every module belongs to one of these 8 pipeline stations:
 * **Deliverable**: A multi-step simulated attack generates ONE correlated incident with a shared `correlation_id`, rather than 5 isolated noise alerts.
 
 ### Week 11: Station 5 — Score (Risk Scoring Engine)
-* **Goal**: Synthesize model probabilities, correlation evidence, asset criticality, and time decay into one transparent score ($0.0 - 1.0$).
+* **Goal**: Aggregate evidence from all indicators in a correlated attack chain into a composite risk score (0.00 – 1.00).
 * **Target Files**:
-  * `risk/engine.py`: Formula-based scoring engine:
-    $$\text{Risk} = w_{\text{model}} \cdot S_{\text{model}} + w_{\text{corr}} \cdot S_{\text{chain}} + w_{\text{anomaly}} \cdot S_{\text{anomaly}}$$
-  * Configurable weights in `configs/base.yaml`.
-* **Deliverable**: Testable, transparent scoring breakdown explaining how the number was calculated.
+  * `risk/engine.py`: Combines base event severity, ML confidence scores, graph chain depth, and temporal decay into a single normalized risk score.
+* **Deliverable**: Risk score evaluated and tagged on each correlated detection.
 
-### Week 12: Station 6 & 7 — Decide & Act (Decision Engine & Response Layer)
-* **Goal**: Map risk scores to actionable security decisions and execute automated responses.
+### Week 12: Stations 6 & 7 — Decide & Act (Response Layer)
+* **Goal**: Turn risk scores into enforcement decisions and user-visible desktop actions.
 * **Target Files**:
-  * `decision/engine.py`: Evaluates thresholds:
-    * `0.00 – 0.30`: `ALLOW`
-    * `0.31 – 0.60`: `MONITOR`
-    * `0.61 – 0.80`: `WARN` (triggers native Windows desktop toast notification)
-    * `0.81 – 0.95`: `STRONG_WARNING`
-    * `> 0.95`: `BLOCK` (safe file quarantine to `.quarantine/` in sandbox)
-  * `decision/notifier.py`: Windows native desktop toast notifications via `win10toast` or `windows-toasts`.
-* **Deliverable**: Visiting a malicious URL or creating a dangerous test file pops up a real Windows notification and records the decision.
+  * `decision/policy.py`: Maps risk scores to actions (`ALLOW`, `MONITOR`, `WARN`, `BLOCK`) according to `configs/base.yaml`.
+  * `decision/response/toast.py`: Native Windows toast notifications using `plyer` or PowerShell BurntToast.
+  * `decision/response/quarantine.py`: Moves suspicious downloaded files into a secure, encrypted or locked quarantine directory.
+* **Deliverable**: High-risk threat triggers a desktop alert and isolates the offending file safely.
 
-### Week 13: Station 8 — Explain (Local LLM Explainer & React Dashboard)
-* **Goal**: Explain why an alert fired in plain English using a local model, and present a visual SOC interface.
+### Week 13: Station 8 — Explain (Local LLM & Dashboard)
+* **Goal**: Explain why an alert was triggered in plain English and provide a security analyst UI.
 * **Target Files**:
-  * `llm/explainer.py`: Local Ollama integration (`llama3.2:1b` or `qwen2.5:1.5b` CPU-quantized), receives the attack graph and risk factors and generates an explainable summary.
-  * `frontend/`: Lightweight React/Vite dashboard displaying protection status, recent events, threat graph, and AI explanations.
-* **Deliverable**: Dashboard displaying live attack chain diagram with plain-English explanation generated on-device.
+  * `llm/ollama_client.py`: Calls local Ollama (e.g. `llama3` or `mistral`) with attack chain context, asking it to explain in 2-3 sentences what happened and what action the user should take.
+  * `frontend/`: Lightweight React/Vite dashboard showing event streams, active attack graphs, threat breakdown, and one-click mitigation.
+* **Deliverable**: User opens browser dashboard to see live threat map and plain-English incident summaries.
 
-### Week 14: Station Packaging & Evaluation
-* **Goal**: Package the agent as a background Windows service and generate the final benchmark report.
+### Week 14: Packaging, Hardening & Evaluation
+* **Goal**: Package LifeShield as a reliable Windows background service with end-to-end test benchmarks.
 * **Target Files**:
-  * `agent/service.py`: Windows service wrapper (`pywin32`) for automatic background startup.
-  * `tests/evaluation_benchmark.py`: Measures CPU/RAM consumption, event processing latency (ms), and Precision/Recall/F1 table.
-* **Deliverable**: Complete capstone project report and reproducible end-to-end demo.
-
----
-
-## 📋 5. Prompt Template to Give to Any New AI Model
-
-When switching to another model or starting a fresh chat session, copy and paste this exact prompt:
-
-```text
-I am continuing the LifeShield project in this workspace.
-Please inspect docs/COLLECTIVE_STATE_AND_ROADMAP.md to understand the project architecture, the 8-station pipeline, and the work completed so far (Weeks 1 to 5 are finished and passing 19 pytest tests).
-
-We are currently on: Week [INSERT WEEK NUMBER HERE, e.g. Week 6 - Windows Telemetry Collector].
-
-Strict Rules to Follow:
-1. Adhere to the canonical LifeShieldEvent schema in storage/schema.py.
-2. Direct all SQLite operations through storage/repository.py.
-3. Keep all execution CPU-only (no GPU dependencies).
-4. Do not hardcode ports or paths; use configs/loader.py and configs/base.yaml.
-5. Create a dedicated git branch 'feature/<module>' and write comprehensive pytest tests.
-
-Please review the codebase and implement Week [N].
-```
+  * `service.py`: Windows Service wrapper via `win32serviceutil`.
+  * `scripts/benchmark.py`: Evaluates latency (event post to alert), memory footprint, CPU consumption, and detection accuracy under stress.
+* **Deliverable**: LifeShield installs, auto-starts on Windows boot, stays under 150MB RAM, and handles 100+ events/sec cleanly.
