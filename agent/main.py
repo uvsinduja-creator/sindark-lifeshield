@@ -4,6 +4,8 @@ Starts the FastAPI application, initializes database, configures CORS middleware
 and runs the background consumer task to drain the EventBus into SQLite storage.
 In Week 4: Real-time ML Phishing URL scoring for URL_VISIT and URL_REDIRECT events.
 In Week 5: Real-time ML Scam/Phishing NLP text classification for MESSAGE_ANALYSIS events.
+In Week 8: Real-time Static File Risk scoring for FILE_CREATE/FILE_DOWNLOAD and
+           Behavioral Anomaly scoring for telemetry events.
 """
 import sys
 import traceback
@@ -22,6 +24,8 @@ from agent.event_bus import event_bus
 from api.routes import router
 from ml.url_model.classifier import url_classifier
 from ml.nlp_model.classifier import scam_classifier
+from ml.file_model.scorer import file_scorer
+from ml.behavior_model.anomaly import behavior_detector
 
 
 async def background_queue_worker():
@@ -70,6 +74,55 @@ async def background_queue_worker():
                         severity=classification["severity"],
                         is_threat=classification["is_scam"],
                         details=classification,
+                    )
+
+            # Week 8: Real-time Static File Risk Scoring
+            elif event.event_type in (EventType.FILE_CREATE, EventType.FILE_DOWNLOAD):
+                if event.data and isinstance(event.data, dict) and event.data.get("filename"):
+                    file_eval = file_scorer.score(event.data)
+                    event.data["file_risk_score"] = file_eval["risk_score"]
+                    event.data["file_severity"] = file_eval["severity"]
+                    event.data["is_file_threat"] = file_eval["is_threat"]
+                    event.data["file_indicators"] = file_eval["indicators"]
+
+                    if file_eval["risk_score"] > 0.30:
+                        repository.save_detection(
+                            event_id=event.event_id,
+                            model_name="file_risk_heuristic",
+                            risk_score=file_eval["risk_score"],
+                            severity=file_eval["severity"],
+                            is_threat=file_eval["is_threat"],
+                            details=file_eval,
+                        )
+
+            # Week 8: Real-time Behavioral Anomaly Detection for login failures / telemetry
+            if event.event_type == EventType.LOGIN_FAILURE:
+                failed_count = int(event.data.get("failed_attempts") or event.data.get("attempts") or 1)
+                hour = event.timestamp.hour if hasattr(event, "timestamp") and event.timestamp else 12
+                b_eval = behavior_detector.score({
+                    "hour_of_day": hour,
+                    "failed_login_count": failed_count,
+                    "event_rate_per_min": 10.0,
+                })
+                if b_eval["anomaly_score"] > 0.30:
+                    repository.save_detection(
+                        event_id=event.event_id,
+                        model_name="behavior_isolation_forest",
+                        risk_score=b_eval["anomaly_score"],
+                        severity=b_eval["severity"],
+                        is_threat=b_eval["is_anomaly"],
+                        details=b_eval,
+                    )
+            elif event.data and isinstance(event.data, dict) and "behavioral_metrics" in event.data:
+                b_eval = behavior_detector.score(event.data["behavioral_metrics"])
+                if b_eval["anomaly_score"] > 0.30:
+                    repository.save_detection(
+                        event_id=event.event_id,
+                        model_name="behavior_isolation_forest",
+                        risk_score=b_eval["anomaly_score"],
+                        severity=b_eval["severity"],
+                        is_threat=b_eval["is_anomaly"],
+                        details=b_eval,
                     )
 
             # Persist event into SQLite

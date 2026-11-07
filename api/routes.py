@@ -1,7 +1,11 @@
 """
 FastAPI Routes module for LifeShield API.
 Defines endpoints for posting events, fetching events, health check, stats, detections,
-and direct inference for URL Phishing (Week 4) and Scam Message NLP (Week 5).
+and direct inference for Station 3 ML models:
+  - URL Phishing Classifier (Week 4)
+  - Scam Message NLP (Week 5)
+  - Static File Risk Scorer (Week 8)
+  - Behavioral Anomaly Detector (Week 8)
 """
 import sys
 from pathlib import Path
@@ -17,6 +21,8 @@ from storage import repository
 from storage.schema import LifeShieldEvent
 from ml.url_model.classifier import url_classifier
 from ml.nlp_model.classifier import scam_classifier
+from ml.file_model.scorer import file_scorer
+from ml.behavior_model.anomaly import behavior_detector
 
 router = APIRouter()
 
@@ -27,6 +33,28 @@ class URLScoreRequest(BaseModel):
 
 class MessageScoreRequest(BaseModel):
     text: str
+
+
+class FileScoreRequest(BaseModel):
+    filename: str
+    path: Optional[str] = None
+    extension: Optional[str] = None
+    size_bytes: Optional[int] = 0
+    entropy: Optional[float] = 0.0
+    is_double_extension: Optional[bool] = False
+    is_hidden: Optional[bool] = False
+
+
+class BehaviorScoreRequest(BaseModel):
+    hour_of_day: Optional[int] = None
+    is_off_hours: Optional[int] = None
+    is_weekend: Optional[int] = None
+    event_rate_per_min: Optional[float] = 0.0
+    process_start_rate_per_min: Optional[float] = 0.0
+    failed_login_count: Optional[int] = 0
+    network_conn_rate_per_min: Optional[float] = 0.0
+    dns_query_rate_per_min: Optional[float] = 0.0
+    file_download_rate_per_min: Optional[float] = 0.0
 
 
 @router.post("/events", status_code=status.HTTP_202_ACCEPTED)
@@ -44,29 +72,22 @@ async def post_event(raw_payload: Dict[str, Any]):
         )
 
     await event_bus.put(event)
-    return {
-        "status": "queued",
-        "event_id": event.event_id,
-        "event_type": event.event_type,
-    }
-
-
-@router.get("/events", response_model=List[LifeShieldEvent])
-async def list_events(limit: int = Query(default=100, ge=1, le=1000)):
-    """Retrieves recent events stored in the SQLite database."""
-    return repository.get_events(limit=limit)
+    return {"status": "queued", "event_id": event.event_id}
 
 
 @router.get("/events/{event_id}", response_model=LifeShieldEvent)
 async def get_event(event_id: str):
-    """Retrieves a single event by event_id."""
+    """Fetches a single event by event_id."""
     event = repository.get_event_by_id(event_id)
     if not event:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Event with id '{event_id}' not found",
-        )
+        raise HTTPException(status_code=404, detail="Event not found")
     return event
+
+
+@router.get("/events", response_model=List[LifeShieldEvent])
+async def list_events(limit: int = Query(default=100, ge=1, le=1000)):
+    """Retrieves recent stored events."""
+    return repository.get_events(limit=limit)
 
 
 @router.get("/detections")
@@ -98,6 +119,20 @@ async def score_message_endpoint(req: MessageScoreRequest):
     if not req.text:
         raise HTTPException(status_code=400, detail="Message text cannot be empty")
     return scam_classifier.classify(req.text)
+
+
+@router.post("/ml/file/score")
+async def score_file_endpoint(req: FileScoreRequest):
+    """Direct inference endpoint to evaluate and score static file metadata for delivery risk."""
+    if not req.filename:
+        raise HTTPException(status_code=400, detail="Filename cannot be empty")
+    return file_scorer.score(req.model_dump())
+
+
+@router.post("/ml/behavior/score")
+async def score_behavior_endpoint(req: BehaviorScoreRequest):
+    """Direct inference endpoint to evaluate telemetry window features for behavioral anomaly."""
+    return behavior_detector.score(req.model_dump(exclude_unset=True))
 
 
 @router.get("/health")

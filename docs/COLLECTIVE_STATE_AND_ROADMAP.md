@@ -43,7 +43,7 @@ Every module belongs to one of these 8 pipeline stations:
 
 ---
 
-## 📊 3. Current Implementation Status (Weeks 1 – 7 Completed)
+## 📊 3. Current Implementation Status (Weeks 1 – 8 Completed)
 
 | Week | Component | Status | Key Deliverables & Benchmark Metrics |
 |---|---|---|---|
@@ -54,25 +54,18 @@ Every module belongs to one of these 8 pipeline stations:
 | **Week 5** | Scam Message NLP Model | ✅ Done | `ml/nlp_model/` (`features.py`, `train.py`, `classifier.py`, `collect_dataset.py`, `data/dataset.csv`). **Trained on 6,370 real-world samples** (UCI SMS Spam Collection + Fraud Email Phishing dataset + mobile scam patterns) using TF-IDF + Logistic Regression. **98.80% Train Accuracy, 97.33% Test Accuracy, 0.9948 ROC-AUC**. Real-time scoring wired into `MESSAGE_ANALYSIS` events. |
 | **Week 6** | Windows Telemetry Collector | ✅ Done | `collectors/windows/` (`login_collector.py`, `process_collector.py`, `watcher.py`). Windows Security Event Log (Event ID 4624 -> `LOGIN_SUCCESS`, Event ID 4625 -> `LOGIN_FAILURE`) via `pywin32` + process creation/termination tracking (`PROCESS_START`, `PROCESS_END`) via `psutil`. Configuration from `configs/base.yaml`. |
 | **Week 7** | Network & File Collectors | ✅ Done | `collectors/filesystem/` (`file_watcher.py` using `watchdog`, SHA-256 chunked hashing, Shannon entropy, double-extension detection, browser temp download completion handling for `FILE_CREATE` and `FILE_DOWNLOAD`). `collectors/network/` (`dns_collector.py` with Windows DNS cache inspection and socket connection monitoring for `DNS_QUERY` and `NETWORK_CONNECTION`). Master multi-collector orchestrator `collectors/watcher.py`. |
-| **Week 8** | Behavior & File Models | ⏳ Next | Isolation Forest behavioral anomaly detector + file risk model. |
-| **Weeks 9–10** | Correlation Engine | ⏳ Pending | Cross-source attack chain reconstruction (`URL -> download -> process -> network`). |
+| **Week 8** | Behavior & File Models | ✅ Done | `ml/file_model/` (`features.py`, `scorer.py`) with static metadata risk scoring (double extension masquerading, Shannon entropy $> 7.2$, dropper sizing, phishing lure keywords). `ml/behavior_model/` (`features.py`, `anomaly.py`) with unsupervised `IsolationForest` behavioral anomaly detector (brute-force logins, off-hour surges, process storms). Wired into background agent pipeline and `/ml/file/score`, `/ml/behavior/score` endpoints. |
+| **Weeks 9–10** | Correlation Engine | ⏳ Next | Cross-source attack chain reconstruction (`URL -> download -> process -> network`). |
 | **Week 11** | Risk Scoring Engine | ⏳ Pending | Weighted evidence scoring combining ML, severity, recency, and chain length. |
 | **Week 12** | Decision & Response Layer | ⏳ Pending | Policy rules (ALLOW/WARN/BLOCK) + Windows desktop notifications + safe quarantine. |
 | **Week 13** | Local LLM & Dashboard | ⏳ Pending | Ollama local explanation generator + React monitoring dashboard. |
 | **Week 14** | Packaging & Evaluation | ⏳ Pending | Windows background service + end-to-end benchmark reporting. |
 
-**Current Test Suite**: 40 automated tests passing in ~7 seconds (`python -m pytest tests/ -v`).
+**Current Test Suite**: 52 automated tests passing in ~8.5 seconds (`python -m pytest tests/ -v`).
 
 ---
 
-## 🗺️ 4. Detailed Blueprints for Upcoming Weeks (Weeks 8 – 14)
-
-### Week 8: Station 3 — Think (Behavior Anomaly & File Risk Models)
-* **Goal**: Detect anomalies in user activity baselines and evaluate file risk before execution.
-* **Target Files**:
-  * `ml/behavior_model/anomaly.py`: `IsolationForest` model over user feature vectors (login hour, process launch rate, DNS resolution frequency, download burst rate).
-  * `ml/file_model/scorer.py`: Scores file metadata: double extensions (e.g., `.pdf.exe`), high Shannon entropy (packed/encrypted binaries), untrusted source directory, anomalous file size.
-* **Deliverable**: Unusual activity patterns (e.g. 3 AM login spike or high-entropy executable download) produce anomaly scores.
+## 🗺️ 4. Detailed Blueprints for Upcoming Weeks (Weeks 9 – 14)
 
 ### Weeks 9 – 10: Station 4 — Connect (Attack Chain Correlation Engine)
 * **Goal**: Connect separate events across time, domain, process, and user into unified attack chains.

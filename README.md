@@ -38,14 +38,14 @@ exposed via `api/` (FastAPI backend).
 | `collectors/windows/` | Windows Event Log / login / process telemetry | ✅ Completed | Week 6 |
 | `collectors/filesystem/` | Filesystem creation & download watcher via watchdog | ✅ Completed | Week 7 |
 | `collectors/network/` | Windows DNS query cache & active network connection monitor | ✅ Completed | Week 7 |
-| `ml/behavior_model/` | Isolation Forest anomaly detector | ⏳ Next | Week 8 |
-| `ml/file_model/` | File risk scoring (metadata-based) | ⏳ Next | Week 8 |
-| `correlation/` | Cross-source attack chain correlation engine | ⏳ Scheduled | Week 9-10 |
+| `ml/behavior_model/` | Isolation Forest unsupervised behavioral anomaly detector | ✅ Completed | Week 8 |
+| `ml/file_model/` | Static metadata & heuristic file risk scoring engine | ✅ Completed | Week 8 |
+| `correlation/` | Cross-source attack chain correlation engine | ⏳ Next | Week 9-10 |
 | `risk/` | Multi-factor risk scoring engine | ⏳ Scheduled | Week 11 |
 | `decision/` | Thresholds -> ALLOW/WARN/BLOCK + response actions & toasts | ⏳ Scheduled | Week 11-12 |
 | `llm/` | Local Ollama integration for plain-English explanations | ⏳ Scheduled | Week 13 |
 | `frontend/` | React dashboard | ⏳ Scheduled | Week 13 |
-| `tests/` | 40 automated pytest unit + integration tests (all passing) | ✅ Active | ongoing |
+| `tests/` | 52 automated pytest unit + integration tests (all passing) | ✅ Active | ongoing |
 
 ---
 
@@ -55,7 +55,7 @@ exposed via `api/` (FastAPI backend).
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Run automated test suite (40 tests)
+# 2. Run automated test suite (52 tests)
 python -m pytest tests/ -v
 
 # 3. Start the LifeShield Agent
@@ -76,10 +76,11 @@ Branch off `develop` or use `feature/<module>`:
 ```
 main
 develop
-feature/agent        (Week 2)
-feature/browser      (Week 3)
-feature/ml-url       (Week 4)
-feature/ml-nlp       (Week 5)
-feature/windows      (Week 6)
-feature/network-file (Week 7)
+feature/agent             (Week 2)
+feature/browser           (Week 3)
+feature/ml-url            (Week 4)
+feature/ml-nlp            (Week 5)
+feature/windows           (Week 6)
+feature/network-file      (Week 7)
+feature/ml-behavior-file  (Week 8)
 ```
