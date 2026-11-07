@@ -43,7 +43,7 @@ Every module belongs to one of these 8 pipeline stations:
 
 ---
 
-## 📊 3. Current Implementation Status (Weeks 1 – 6 Completed)
+## 📊 3. Current Implementation Status (Weeks 1 – 7 Completed)
 
 | Week | Component | Status | Key Deliverables & Benchmark Metrics |
 |---|---|---|---|
@@ -53,26 +53,19 @@ Every module belongs to one of these 8 pipeline stations:
 | **Week 4** | URL Phishing ML Model | ✅ Done | `ml/url_model/` (`features.py`, `train.py`, `classifier.py`, `collect_dataset.py`, `data/dataset.csv`). **Trained on 40,000 real-world samples** (JPCERT/CC + OpenPhish + Tranco Top 1M). **98.29% Train Accuracy, 97.71% Test Accuracy, 0.9979 ROC-AUC**. Real-time scoring wired into agent. |
 | **Week 5** | Scam Message NLP Model | ✅ Done | `ml/nlp_model/` (`features.py`, `train.py`, `classifier.py`, `collect_dataset.py`, `data/dataset.csv`). **Trained on 6,370 real-world samples** (UCI SMS Spam Collection + Fraud Email Phishing dataset + mobile scam patterns) using TF-IDF + Logistic Regression. **98.80% Train Accuracy, 97.33% Test Accuracy, 0.9948 ROC-AUC**. Real-time scoring wired into `MESSAGE_ANALYSIS` events. |
 | **Week 6** | Windows Telemetry Collector | ✅ Done | `collectors/windows/` (`login_collector.py`, `process_collector.py`, `watcher.py`). Windows Security Event Log (Event ID 4624 -> `LOGIN_SUCCESS`, Event ID 4625 -> `LOGIN_FAILURE`) via `pywin32` + process creation/termination tracking (`PROCESS_START`, `PROCESS_END`) via `psutil`. Configuration from `configs/base.yaml`. |
-| **Week 7** | Network & File Collectors | ⏳ Next | DNS query metadata + file creation/download watcher. |
-| **Week 8** | Behavior & File Models | ⏳ Pending | Isolation Forest behavioral anomaly detector + file risk model. |
+| **Week 7** | Network & File Collectors | ✅ Done | `collectors/filesystem/` (`file_watcher.py` using `watchdog`, SHA-256 chunked hashing, Shannon entropy, double-extension detection, browser temp download completion handling for `FILE_CREATE` and `FILE_DOWNLOAD`). `collectors/network/` (`dns_collector.py` with Windows DNS cache inspection and socket connection monitoring for `DNS_QUERY` and `NETWORK_CONNECTION`). Master multi-collector orchestrator `collectors/watcher.py`. |
+| **Week 8** | Behavior & File Models | ⏳ Next | Isolation Forest behavioral anomaly detector + file risk model. |
 | **Weeks 9–10** | Correlation Engine | ⏳ Pending | Cross-source attack chain reconstruction (`URL -> download -> process -> network`). |
 | **Week 11** | Risk Scoring Engine | ⏳ Pending | Weighted evidence scoring combining ML, severity, recency, and chain length. |
 | **Week 12** | Decision & Response Layer | ⏳ Pending | Policy rules (ALLOW/WARN/BLOCK) + Windows desktop notifications + safe quarantine. |
 | **Week 13** | Local LLM & Dashboard | ⏳ Pending | Ollama local explanation generator + React monitoring dashboard. |
 | **Week 14** | Packaging & Evaluation | ⏳ Pending | Windows background service + end-to-end benchmark reporting. |
 
-**Current Test Suite**: 28 automated tests passing in ~6 seconds (`python -m pytest tests/ -v`).
+**Current Test Suite**: 40 automated tests passing in ~7 seconds (`python -m pytest tests/ -v`).
 
 ---
 
-## 🗺️ 4. Detailed Blueprints for Upcoming Weeks (Weeks 7 – 14)
-
-### Week 7: Station 1 — Watch (Network & Filesystem Collectors)
-* **Goal**: Observe DNS lookups and downloaded/created file filesystem changes.
-* **Target Files**:
-  * `collectors/filesystem/file_watcher.py`: Uses `watchdog` to monitor user Downloads/Desktop directories, extracts SHA-256 hash, size, extension, and parent process, emitting `FILE_CREATE` and `FILE_DOWNLOAD`.
-  * `collectors/network/dns_collector.py`: Lightweight DNS query monitor (via ETW Microsoft-Windows-DNS-Client or packet sniffing / netstat polling) emitting `DNS_QUERY` and `NETWORK_CONNECTION`.
-* **Deliverable**: Downloading a test executable and having it query an external domain creates two corresponding events in the pipeline.
+## 🗺️ 4. Detailed Blueprints for Upcoming Weeks (Weeks 8 – 14)
 
 ### Week 8: Station 3 — Think (Behavior Anomaly & File Risk Models)
 * **Goal**: Detect anomalies in user activity baselines and evaluate file risk before execution.

@@ -27,3 +27,19 @@ collectors:
     poll_interval_seconds: 5
     # How far back (seconds) to look on the very first login collector poll
     login_lookback_seconds: 30
+
+  filesystem:
+    # Directories to watch (defaults to user Downloads and Desktop)
+    watch_dirs:
+      - "~/Downloads"
+      - "~/Desktop"
+    # Max file size to compute SHA-256 hash in bytes (default: 50 MB)
+    max_hash_bytes: 52428800
+    # Polling wait interval between retry attempts when reading locked files (seconds)
+    lock_retry_seconds: 0.2
+
+  network:
+    # Seconds between network connection snapshot polls
+    poll_interval_seconds: 5
+    # Seconds between DNS cache inspection polls
+    dns_poll_interval_seconds: 5
